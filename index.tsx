@@ -103,12 +103,49 @@ const AppWrapper: React.FC = () => {
 // Global error handler
 window.onerror = (message, source, lineno, colno, error) => {
   console.error('Global error:', { message, source, lineno, colno, error });
+  // Display error on page for debugging
+  const root = document.getElementById('root');
+  if (root) {
+    root.innerHTML = `<div style="padding:20px;color:red;background:#000;min-height:100vh;">
+      <h1>JavaScript Error</h1>
+      <pre>${message}</pre>
+      <pre>Source: ${source}</pre>
+      <pre>Line: ${lineno}</pre>
+    </div>`;
+  }
+};
+
+// Catch unhandled promise rejections
+window.onunhandledrejection = (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  const root = document.getElementById('root');
+  if (root) {
+    root.innerHTML = `<div style="padding:20px;color:red;background:#000;min-height:100vh;">
+      <h1>Promise Error</h1>
+      <pre>${event.reason}</pre>
+    </div>`;
+  }
 };
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
+  document.body.innerHTML = '<div style="padding:20px;color:red;">Error: Could not find root element</div>';
   throw new Error("Could not find root element to mount to");
 }
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(<AppWrapper />);
+// Add loading indicator immediately
+rootElement.innerHTML = '<div style="padding:20px;color:white;background:#020617;min-height:100vh;display:flex;align-items:center;justify-content:center;">Initializing TTS Cloud...</div>';
+
+console.log('Starting React app...');
+
+try {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(<AppWrapper />);
+  console.log('React app mounted successfully');
+} catch (e) {
+  console.error('Failed to mount React app:', e);
+  rootElement.innerHTML = `<div style="padding:20px;color:red;background:#000;min-height:100vh;">
+    <h1>Mount Error</h1>
+    <pre>${e instanceof Error ? e.message : String(e)}</pre>
+  </div>`;
+}
