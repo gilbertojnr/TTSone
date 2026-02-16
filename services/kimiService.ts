@@ -2,7 +2,8 @@ import { StockSetup, StratInsight, MarketPulse, CatalystStock, HighProbSetup, Ae
 
 // Kimi API Configuration
 const KIMI_API_KEY = import.meta.env.VITE_KIMI_API_KEY || '';
-const KIMI_BASE_URL = 'https://api.kimi.com/coding';
+// Kimi uses OpenAI-compatible API through the coding endpoint
+const KIMI_BASE_URL = 'https://api.kimi.com/coding/v1';
 
 if (!KIMI_API_KEY) {
   console.warn('KIMI_API_KEY not set. AI features will not work.');
@@ -45,24 +46,29 @@ async function callKimi(prompt: string, systemInstruction?: string): Promise<str
     throw new Error('KIMI_API_KEY not configured');
   }
 
-  const response = await fetch(`${KIMI_BASE_URL}/v1/chat/completions`, {
+  const messages = [];
+  if (systemInstruction) {
+    messages.push({ role: 'system', content: systemInstruction });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  const response = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${KIMI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'k2p5',
-      messages: [
-        ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
-        { role: 'user', content: prompt }
-      ],
+      model: 'kimi-k2.5',
+      messages: messages,
       temperature: 0.7,
       max_tokens: 2000,
     }),
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Kimi API error:', response.status, errorText);
     throw new Error(`Kimi API error: ${response.status}`);
   }
 

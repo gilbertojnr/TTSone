@@ -89,10 +89,17 @@ class MarketDataStream {
     }, 10000);
   }
 
-  public connectToLiveProvider(preferredProvider: 'massive' | 'finnhub' = 'massive') {
+  public connectToLiveProvider(preferredProvider: 'finnhub' | 'massive' = 'finnhub') {
     this.reconnectAttempts = 0;
     this.currentProvider = preferredProvider;
-    this.initiateConnection(preferredProvider);
+    
+    // Only WebSocket with Finnhub (MASSIVE may not support WebSocket)
+    if (FINNHUB_API_KEY) {
+      this.initiateConnection('finnhub');
+    } else {
+      console.warn('No Finnhub API key, starting simulation');
+      this.startSimulation();
+    }
   }
 
   private initiateConnection(provider: 'massive' | 'finnhub') {
