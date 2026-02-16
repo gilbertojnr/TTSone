@@ -3,13 +3,12 @@ import { StockSetup, CandleType } from "../types";
 export type MarketUpdateHandler = (symbol: string, price: number, tick: number) => void;
 export type ConnectionStatusHandler = (status: 'connecting' | 'connected' | 'disconnected' | 'error' | 'silent' | 'reconnecting' | 'cloud_active') => void;
 
-export interface FinnhubQuote {
-  c: number; d: number; dp: number; h: number; l: number; o: number; pc: number;
-}
-
 // API Keys from environment
 const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
 const MASSIVE_API_KEY = import.meta.env.VITE_MASSIVE_API_KEY || '';
+
+// Price cache from WebSocket data
+const priceCache = new Map<string, { price: number; change: number; changePercent: number; timestamp: number }>();
 
 class MarketDataStream {
   private handlers: Set<MarketUpdateHandler> = new Set();
@@ -24,7 +23,6 @@ class MarketDataStream {
   
   // Provider endpoints
   private FINNHUB_WS_URL = "wss://ws.finnhub.io";
-  // MASSIVE WebSocket endpoint - actual URL from wscat test
   private MASSIVE_WS_URL = "wss://socket.massive.com/stocks";
 
   private allSymbols = [
@@ -45,50 +43,14 @@ class MarketDataStream {
     this.statusHandlers.forEach(h => h(status));
   }
 
-  // Fetch quote from Finnhub REST API
-  public async fetchQuote(symbol: string): Promise<FinnhubQuote | null> {
-    if (!FINNHUB_API_KEY) {
-      console.warn('Finnhub API key not configured');
-      return null;
-    }
-    try {
-      const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`);
-      return await response.json();
-    } catch (e) { 
-      console.error('Error fetching quote:', e);
-      return null; 
-    }
+  // Get cached price (from WebSocket data only)
+  public getCachedPrice(symbol: string) {
+    return priceCache.get(symbol);
   }
 
-  // Fetch quote from MASSIVE REST API
-  public async fetchQuoteFromMassive(symbol: string): Promise<FinnhubQuote | null> {
-    if (!MASSIVE_API_KEY) {
-      console.warn('MASSIVE API key not configured');
-      return null;
-    }
-    try {
-      const response = await fetch(`https://api.massive.com/v1/stocks/quote?symbol=${symbol}`, {
-        headers: {
-          'Authorization': `Bearer ${MASSIVE_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      // Map MASSIVE format to Finnhub format
-      return {
-        c: data.price || data.last || 0,
-        d: data.change || 0,
-        dp: data.changePercent || 0,
-        h: data.high || 0,
-        l: data.low || 0,
-        o: data.open || 0,
-        pc: data.previousClose || 0
-      };
-    } catch (e) { 
-      console.error('Error fetching from MASSIVE:', e);
-      return null; 
-    }
+  // Get all cached prices
+  public getAllCachedPrices() {
+    return Object.fromEntries(priceCache);
   }
 
   private startSilentMonitor() {
@@ -137,12 +99,9 @@ class MarketDataStream {
     this.currentProvider = 'massive';
     
     try {
-      // MASSIVE WebSocket with authentication
-      // MASSIVE uses different auth - check if API key is passed as query param or header
       const url = `${this.MASSIVE_WS_URL}`;
       this.socket = new WebSocket(url);
       
-      // Send authentication message after connection
       this.socket.onopen = () => {
         console.log('MASSIVE WebSocket connected');
         
@@ -176,7 +135,19 @@ class MarketDataStream {
           if (data.type === 'trade' || data.event === 'trade') {
             const symbol = data.symbol || data.s;
             const price = data.price || data.p || data.last;
+            const change = data.change || data.d || 0;
+            const changePercent = data.changePercent || data.dp || 0;
+            
             if (symbol && price) {
+              // Update cache
+              priceCache.set(symbol, {
+                price,
+                change,
+                changePercent,
+                timestamp: Date.now()
+              });
+              
+              // Notify handlers
               this.handlers.forEach(handler => handler(symbol, price, 0));
             }
           } else if (data.trades) {
@@ -184,7 +155,16 @@ class MarketDataStream {
             data.trades.forEach((trade: any) => {
               const symbol = trade.symbol || trade.s;
               const price = trade.price || trade.p;
+              const change = trade.change || trade.d || 0;
+              const changePercent = trade.changePercent || trade.dp || 0;
+              
               if (symbol && price) {
+                priceCache.set(symbol, {
+                  price,
+                  change,
+                  changePercent,
+                  timestamp: Date.now()
+                });
                 this.handlers.forEach(handler => handler(symbol, price, 0));
               }
             });
@@ -198,7 +178,6 @@ class MarketDataStream {
         console.error('MASSIVE WebSocket error:', error);
         this.isLiveConnection = false;
         this.updateStatus('error');
-        // Fall back to Finnhub on error
         if (FINNHUB_API_KEY) {
           console.log('MASSIVE error, falling back to Finnhub');
           this.initiateFinnhubConnection();
@@ -254,7 +233,6 @@ class MarketDataStream {
         this.updateStatus('connected');
         this.stopSimulation();
         
-        // Subscribe to all symbols
         this.allSymbols.forEach(s => {
           this.socket?.send(JSON.stringify({'type':'subscribe', 'symbol': s}));
         });
@@ -266,7 +244,22 @@ class MarketDataStream {
           if (data.type === 'trade') {
             this.lastMessageTime = Date.now();
             data.data.forEach((trade: any) => {
-              this.handlers.forEach(handler => handler(trade.s, trade.p, 0));
+              const symbol = trade.s;
+              const price = trade.p;
+              
+              // Update cache with Finnhub data
+              const cached = priceCache.get(symbol);
+              const change = cached ? price - cached.price : 0;
+              const changePercent = cached && cached.price > 0 ? (change / cached.price) * 100 : 0;
+              
+              priceCache.set(symbol, {
+                price,
+                change,
+                changePercent,
+                timestamp: Date.now()
+              });
+              
+              this.handlers.forEach(handler => handler(symbol, price, 0));
             });
           }
         } catch (e) {
@@ -301,7 +294,6 @@ class MarketDataStream {
     this.reconnectAttempts++;
     setTimeout(() => {
       if (!this.isLiveConnection) {
-        // Try fallback provider
         if (this.currentProvider === 'massive' && FINNHUB_API_KEY) {
           console.log('Retrying with Finnhub...');
           this.initiateFinnhubConnection();

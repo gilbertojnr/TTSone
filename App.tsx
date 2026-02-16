@@ -37,31 +37,34 @@ const App: React.FC = () => {
       try {
         setSyncing(true);
         setError(null);
-      await getWatchlistFromCloud();
-      const updatedStocks = await Promise.all(stocks.map(async (stock) => {
-        // Try MASSIVE first, then Finnhub
-        let quote = await marketStream.fetchQuoteFromMassive(stock.symbol);
-        if (!quote && hasFinnhubKey) {
-          quote = await marketStream.fetchQuote(stock.symbol);
-        }
-        if (quote && quote.c) {
-          return {
-            ...stock,
-            price: quote.c,
-            openPrice: quote.pc ?? stock.openPrice,
-            change: quote.d ?? 0,
-            changePercent: quote.dp ?? 0
-          };
-        }
-        return stock;
-      }));
-      setStocks(updatedStocks);
-      setSyncing(false);
-      setTimeout(() => setCanShowCatalysts(true), 1000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to initialize data');
-      setSyncing(false);
-    }
+        await getWatchlistFromCloud();
+        
+        // WebSocket-only: Get initial prices from cache after connection
+        // The WebSocket will populate the cache with live data
+        setTimeout(() => {
+          const cachedPrices = marketStream.getAllCachedPrices();
+          if (Object.keys(cachedPrices).length > 0) {
+            setStocks(prev => prev.map(stock => {
+              const cached = cachedPrices[stock.symbol];
+              if (cached) {
+                return {
+                  ...stock,
+                  price: cached.price,
+                  change: cached.change,
+                  changePercent: cached.changePercent
+                };
+              }
+              return stock;
+            }));
+          }
+          setSyncing(false);
+          setTimeout(() => setCanShowCatalysts(true), 1000);
+        }, 2000); // Wait 2s for WebSocket to populate cache
+        
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to initialize data');
+        setSyncing(false);
+      }
     };
 
     initializeData();
