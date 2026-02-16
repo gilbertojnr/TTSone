@@ -20,6 +20,7 @@ class MarketDataStream {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 10;
   private currentProvider: 'finnhub' | 'massive' | 'simulation' = 'simulation';
+  private isAuthenticated: boolean = false;
   
   // Provider endpoints
   private FINNHUB_WS_URL = "wss://ws.finnhub.io";
@@ -99,9 +100,11 @@ class MarketDataStream {
     
     this.updateStatus('connecting');
     this.currentProvider = 'massive';
+    this.isAuthenticated = false;
     
     try {
       const url = `${this.MASSIVE_WS_URL}`;
+      console.log('Connecting to:', url);
       this.socket = new WebSocket(url);
       
       this.socket.onopen = () => {
@@ -114,28 +117,43 @@ class MarketDataStream {
         });
         console.log('Sending auth message...');
         this.socket?.send(authMsg);
-        
-        this.isLiveConnection = true;
-        this.reconnectAttempts = 0;
-        this.lastMessageTime = Date.now();
-        this.updateStatus('connected');
-        this.stopSimulation();
-        
-        // Subscribe to symbols after auth
-        console.log('Subscribing to symbols:', this.allSymbols.length);
-        this.allSymbols.forEach(symbol => {
-          this.socket?.send(JSON.stringify({
-            type: 'subscribe',
-            symbol: symbol
-          }));
-        });
       };
 
       this.socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('MASSIVE message received:', data.type || data.event || 'unknown');
+          console.log('MASSIVE message received:', data);
           this.lastMessageTime = Date.now();
+          
+          // Handle auth response
+          if (data.type === 'auth') {
+            if (data.status === 'success') {
+              console.log('MASSIVE auth successful');
+              this.isAuthenticated = true;
+              this.isLiveConnection = true;
+              this.reconnectAttempts = 0;
+              this.updateStatus('connected');
+              this.stopSimulation();
+              
+              // Subscribe to symbols after successful auth
+              console.log('Subscribing to symbols:', this.allSymbols.length);
+              this.allSymbols.forEach(symbol => {
+                this.socket?.send(JSON.stringify({
+                  type: 'subscribe',
+                  symbol: symbol
+                }));
+              });
+            } else {
+              console.error('MASSIVE auth failed:', data.message);
+              this.isAuthenticated = false;
+              this.updateStatus('error');
+              // Try Finnhub if auth fails
+              if (FINNHUB_API_KEY) {
+                this.initiateFinnhubConnection();
+              }
+            }
+            return;
+          }
           
           // Handle MASSIVE WebSocket message format
           if (data.type === 'trade' || data.event === 'trade') {
@@ -174,6 +192,22 @@ class MarketDataStream {
                 this.handlers.forEach(handler => handler(symbol, price, 0));
               }
             });
+          } else if (data.type === 'quote') {
+            // Quote format
+            const symbol = data.symbol || data.s;
+            const price = data.price || data.p || data.c || data.last;
+            const change = data.change || data.d || 0;
+            const changePercent = data.changePercent || data.dp || 0;
+            
+            if (symbol && price) {
+              priceCache.set(symbol, {
+                price,
+                change,
+                changePercent,
+                timestamp: Date.now()
+              });
+              this.handlers.forEach(handler => handler(symbol, price, 0));
+            }
           }
         } catch (e) {
           console.error('Error parsing MASSIVE WebSocket message:', e);
@@ -183,6 +217,7 @@ class MarketDataStream {
       this.socket.onerror = (error) => {
         console.error('MASSIVE WebSocket error:', error);
         this.isLiveConnection = false;
+        this.isAuthenticated = false;
         this.updateStatus('error');
         if (FINNHUB_API_KEY) {
           console.log('MASSIVE error, falling back to Finnhub');
@@ -192,9 +227,10 @@ class MarketDataStream {
         }
       };
 
-      this.socket.onclose = () => {
-        console.log('MASSIVE WebSocket closed');
+      this.socket.onclose = (event) => {
+        console.log('MASSIVE WebSocket closed:', { code: event.code, reason: event.reason, wasClean: event.wasClean });
         this.isLiveConnection = false;
+        this.isAuthenticated = false;
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnect();
         } else {
@@ -229,6 +265,7 @@ class MarketDataStream {
     
     try {
       const url = `${this.FINNHUB_WS_URL}?token=${FINNHUB_API_KEY}`;
+      console.log('Connecting to Finnhub:', url);
       this.socket = new WebSocket(url);
       
       this.socket.onopen = () => {
@@ -280,8 +317,8 @@ class MarketDataStream {
         this.reconnect();
       };
 
-      this.socket.onclose = () => {
-        console.log('Finnhub WebSocket closed');
+      this.socket.onclose = (event) => {
+        console.log('Finnhub WebSocket closed:', { code: event.code, reason: event.reason });
         this.isLiveConnection = false;
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnect();
@@ -298,6 +335,7 @@ class MarketDataStream {
 
   private reconnect() {
     this.reconnectAttempts++;
+    console.log(`Reconnecting... attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
     setTimeout(() => {
       if (!this.isLiveConnection) {
         if (this.currentProvider === 'massive' && FINNHUB_API_KEY) {
