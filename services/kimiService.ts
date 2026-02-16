@@ -67,6 +67,14 @@ async function callKimi(prompt: string, systemInstruction?: string): Promise<str
   if (!response.ok) {
     const errorText = await response.text();
     console.error('Kimi API error:', response.status, errorText);
+    
+    if (response.status === 401) {
+      throw new Error('Invalid API key. Please check your Kimi API key in GitHub Secrets.');
+    }
+    if (response.status === 429) {
+      throw new Error('Rate limit exceeded. Please try again later.');
+    }
+    
     throw new Error(`Kimi API error: ${response.status}`);
   }
 
@@ -319,23 +327,23 @@ let chatHistory: ChatMessage[] = [];
 
 export async function sendChatMessage(message: string): Promise<string> {
   if (!KIMI_API_KEY) {
-    return 'API key not configured. Please set VITE_KIMI_API_KEY in .env.local';
+    return 'API key not configured. Please set VITE_KIMI_API_KEY in GitHub Secrets';
   }
 
   const systemInstruction = `You are the Intelligence Hub of TTS (The Strat) and Aenigma-Parvum (ICT). 
 Combine Rob Smith's Strat methodology with Inner Circle Trader concepts.
 Be concise, technical, and actionable. Focus on 1-2-3 patterns, FTFC, order blocks, and liquidity.`;
 
-  chatHistory.push({ role: 'user', text: message });
-
-  const context = chatHistory.slice(-10).map(m => `${m.role}: ${m.text}`).join('\n');
-  
   try {
+    chatHistory.push({ role: 'user', text: message });
+    const context = chatHistory.slice(-10).map(m => `${m.role}: ${m.text}`).join('\n');
+    
     const response = await callKimi(context, systemInstruction);
     chatHistory.push({ role: 'model', text: response });
     return response;
-  } catch (error) {
-    return 'Error processing message. Please try again.';
+  } catch (error: any) {
+    console.error('StratChat error:', error);
+    return `Error: ${error.message || 'Failed to process message'}`;
   }
 }
 
