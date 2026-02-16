@@ -17,9 +17,11 @@ export default defineConfig(({ mode }) => {
           apply: 'build',
           transformIndexHtml(html) {
             // Remove type="module" and crossorigin attributes
+            // Also ensure script has proper MIME type handling
             return html
               .replace(/type="module"/g, '')
-              .replace(/crossorigin/g, '');
+              .replace(/crossorigin/g, '')
+              .replace(/<script /g, '<script type="text/javascript" ');
           }
         }
       ],

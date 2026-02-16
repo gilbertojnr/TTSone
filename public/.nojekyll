@@ -1,0 +1,2 @@
+// This file ensures GitHub Pages serves JavaScript with correct MIME type
+// Place this in the root of your dist folder as .nojekyll
