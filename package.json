@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && ./fix-github-pages.sh",
     "preview": "vite preview"
   },
   "dependencies": {

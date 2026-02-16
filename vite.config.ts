@@ -24,9 +24,16 @@ export default defineConfig(({ mode }) => {
       build: {
         outDir: 'dist',
         sourcemap: true,
+        // Use IIFE format instead of ES modules for GitHub Pages compatibility
         rollupOptions: {
           input: {
             main: path.resolve(__dirname, 'index.html'),
+          },
+          output: {
+            format: 'iife',
+            entryFileNames: 'assets/[name]-[hash].js',
+            chunkFileNames: 'assets/[name]-[hash].js',
+            assetFileNames: 'assets/[name]-[hash][extname]',
           },
         },
       }
