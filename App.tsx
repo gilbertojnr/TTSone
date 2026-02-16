@@ -28,8 +28,15 @@ const App: React.FC = () => {
       const hasMassiveKey = !!import.meta.env.VITE_MASSIVE_API_KEY;
       const hasFinnhubKey = !!import.meta.env.VITE_FINNHUB_API_KEY;
       
+      console.log('API Keys check:', { 
+        hasMassiveKey, 
+        hasFinnhubKey,
+        massiveKeyLength: import.meta.env.VITE_MASSIVE_API_KEY?.length || 0,
+        finnhubKeyLength: import.meta.env.VITE_FINNHUB_API_KEY?.length || 0
+      });
+      
       if (!hasMassiveKey && !hasFinnhubKey) {
-        setError('No API keys configured. Please set VITE_MASSIVE_API_KEY or VITE_FINNHUB_API_KEY in .env.local');
+        setError('No API keys configured. Please set VITE_MASSIVE_API_KEY or VITE_FINNHUB_API_KEY in GitHub Secrets');
         setSyncing(false);
         return;
       }
@@ -43,6 +50,7 @@ const App: React.FC = () => {
         // The WebSocket will populate the cache with live data
         setTimeout(() => {
           const cachedPrices = marketStream.getAllCachedPrices();
+          console.log('Cached prices:', cachedPrices);
           if (Object.keys(cachedPrices).length > 0) {
             setStocks(prev => prev.map(stock => {
               const cached = cachedPrices[stock.symbol];
@@ -68,7 +76,10 @@ const App: React.FC = () => {
     };
 
     initializeData();
-    marketStream.onStatusChange((status) => setConnStatus(status));
+    marketStream.onStatusChange((status) => {
+      console.log('Connection status:', status);
+      setConnStatus(status);
+    });
     marketStream.connectToLiveProvider('massive');
   }, []);
 

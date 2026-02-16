@@ -85,6 +85,8 @@ class MarketDataStream {
       try { this.socket.close(); } catch(e) {} 
     }
     
+    console.log('Attempting MASSIVE connection...', { hasKey: !!MASSIVE_API_KEY, keyLength: MASSIVE_API_KEY?.length });
+    
     if (!MASSIVE_API_KEY) {
       console.warn('MASSIVE API key not available');
       if (FINNHUB_API_KEY) {
@@ -103,13 +105,15 @@ class MarketDataStream {
       this.socket = new WebSocket(url);
       
       this.socket.onopen = () => {
-        console.log('MASSIVE WebSocket connected');
+        console.log('MASSIVE WebSocket connected successfully');
         
         // Authenticate with API key
-        this.socket?.send(JSON.stringify({
+        const authMsg = JSON.stringify({
           type: 'auth',
           apiKey: MASSIVE_API_KEY
-        }));
+        });
+        console.log('Sending auth message...');
+        this.socket?.send(authMsg);
         
         this.isLiveConnection = true;
         this.reconnectAttempts = 0;
@@ -118,6 +122,7 @@ class MarketDataStream {
         this.stopSimulation();
         
         // Subscribe to symbols after auth
+        console.log('Subscribing to symbols:', this.allSymbols.length);
         this.allSymbols.forEach(symbol => {
           this.socket?.send(JSON.stringify({
             type: 'subscribe',
@@ -129,6 +134,7 @@ class MarketDataStream {
       this.socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log('MASSIVE message received:', data.type || data.event || 'unknown');
           this.lastMessageTime = Date.now();
           
           // Handle MASSIVE WebSocket message format

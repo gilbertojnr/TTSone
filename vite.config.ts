@@ -24,10 +24,11 @@ export default defineConfig(({ mode }) => {
         }
       ],
       base: '/TTSone/',
+      // Properly expose env vars to the client
       define: {
-        'process.env.VITE_KIMI_API_KEY': JSON.stringify(env.VITE_KIMI_API_KEY),
-        'process.env.VITE_MASSIVE_API_KEY': JSON.stringify(env.VITE_MASSIVE_API_KEY),
-        'process.env.VITE_FINNHUB_API_KEY': JSON.stringify(env.VITE_FINNHUB_API_KEY),
+        'import.meta.env.VITE_KIMI_API_KEY': JSON.stringify(env.VITE_KIMI_API_KEY || ''),
+        'import.meta.env.VITE_MASSIVE_API_KEY': JSON.stringify(env.VITE_MASSIVE_API_KEY || ''),
+        'import.meta.env.VITE_FINNHUB_API_KEY': JSON.stringify(env.VITE_FINNHUB_API_KEY || ''),
       },
       resolve: {
         alias: {
