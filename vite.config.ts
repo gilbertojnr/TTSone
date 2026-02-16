@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => {
       },
       build: {
         outDir: 'dist',
-        sourcemap: true,
+        sourcemap: false,  // Disable source maps for production
         rollupOptions: {
           input: {
             main: path.resolve(__dirname, 'index.html'),
