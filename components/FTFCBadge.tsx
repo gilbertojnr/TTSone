@@ -18,7 +18,7 @@ const FTFCBadge: React.FC<Props> = ({ status }) => {
     <span className={`px-2 py-0.5 rounded-full border text-xs font-semibold flex items-center gap-1 w-fit ${current.color}`}>
       <span className="text-sm">{current.icon}</span>
       {status}
-    </div>
+    </span>
   );
 };
 

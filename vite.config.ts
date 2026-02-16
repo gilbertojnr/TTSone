@@ -12,8 +12,9 @@ export default defineConfig(({ mode }) => {
       plugins: [react()],
       base: '/TTSone/',
       define: {
-        'process.env.API_KEY': JSON.stringify(env.VITE_KIMI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_KIMI_API_KEY)
+        'process.env.VITE_KIMI_API_KEY': JSON.stringify(env.VITE_KIMI_API_KEY),
+        'process.env.VITE_MASSIVE_API_KEY': JSON.stringify(env.VITE_MASSIVE_API_KEY),
+        'process.env.VITE_FINNHUB_API_KEY': JSON.stringify(env.VITE_FINNHUB_API_KEY),
       },
       resolve: {
         alias: {
@@ -23,6 +24,11 @@ export default defineConfig(({ mode }) => {
       build: {
         outDir: 'dist',
         sourcemap: true,
+        rollupOptions: {
+          input: {
+            main: path.resolve(__dirname, 'index.html'),
+          },
+        },
       }
     };
 });
