@@ -3,7 +3,9 @@ import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { StockSetup, StratInsight, MarketPulse, CatalystStock, HighProbSetup, AenigmaInsight } from "../types";
 
 // Initialize the Google GenAI client using the environment variable.
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GEMINI_API_KEY || '';
+// @ts-ignore
+declare const __GEMINI_API_KEY__: string;
+const apiKey = (typeof __GEMINI_API_KEY__ !== 'undefined' ? __GEMINI_API_KEY__ : '');
 
 if (!apiKey) {
   console.warn('GEMINI_API_KEY not set. AI features will not work.');

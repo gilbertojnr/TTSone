@@ -2,7 +2,8 @@ import { StockSetup, StratInsight, MarketPulse, CatalystStock, HighProbSetup, Ae
 
 // Kimi API Configuration - Vite replaces this at build time
 // @ts-ignore
-const KIMI_API_KEY: string = (typeof globalThis !== 'undefined' && (globalThis as any).__VITE_KIMI_API_KEY__) || '';
+declare const __KIMI_API_KEY__: string;
+const KIMI_API_KEY: string = (typeof __KIMI_API_KEY__ !== 'undefined' ? __KIMI_API_KEY__ : '');
 
 // Use regular Kimi API endpoint (not coding)
 const KIMI_BASE_URL = 'https://api.moonshot.cn/v1';

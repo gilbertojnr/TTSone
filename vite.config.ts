@@ -17,7 +17,6 @@ export default defineConfig(({ mode }) => {
           apply: 'build',
           transformIndexHtml(html) {
             // Remove type="module" and crossorigin attributes
-            // Also ensure script has proper MIME type handling
             return html
               .replace(/type="module"/g, '')
               .replace(/crossorigin/g, '');
@@ -25,11 +24,13 @@ export default defineConfig(({ mode }) => {
         }
       ],
       base: '/TTSone/',
-      // Properly expose env vars to the client
+      // Replace env vars with actual values at build time
       define: {
-        'import.meta.env.VITE_KIMI_API_KEY': JSON.stringify(env.VITE_KIMI_API_KEY || ''),
-        'import.meta.env.VITE_MASSIVE_API_KEY': JSON.stringify(env.VITE_MASSIVE_API_KEY || ''),
-        'import.meta.env.VITE_FINNHUB_API_KEY': JSON.stringify(env.VITE_FINNHUB_API_KEY || ''),
+        '__KIMI_API_KEY__': JSON.stringify(env.VITE_KIMI_API_KEY || ''),
+        '__MASSIVE_API_KEY__': JSON.stringify(env.VITE_MASSIVE_API_KEY || ''),
+        '__FINNHUB_API_KEY__': JSON.stringify(env.VITE_FINNHUB_API_KEY || ''),
+        '__FIREBASE_API_KEY__': JSON.stringify(env.VITE_FIREBASE_API_KEY || ''),
+        '__GEMINI_API_KEY__': JSON.stringify(env.VITE_GEMINI_API_KEY || ''),
       },
       resolve: {
         alias: {
@@ -38,23 +39,17 @@ export default defineConfig(({ mode }) => {
       },
       build: {
         outDir: 'dist',
-        sourcemap: false,  // Disable source maps for production
+        sourcemap: false,
         rollupOptions: {
           input: {
             main: path.resolve(__dirname, 'index.html'),
           },
           output: {
-            // Use a simpler filename without hash to avoid MIME type issues
+            format: 'iife',
             entryFileNames: 'assets/app.js',
             chunkFileNames: 'assets/[name].js',
-            assetFileNames: (assetInfo) => {
-              const info = assetInfo.name.split('.');
-              const ext = info[info.length - 1];
-              if (ext === 'js') {
-                return 'assets/[name][extname]';
-              }
-              return 'assets/[name]-[hash][extname]';
-            },
+            assetFileNames: 'assets/[name][extname]',
+            inlineDynamicImports: true,
           },
         },
       }

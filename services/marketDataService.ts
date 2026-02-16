@@ -5,9 +5,11 @@ export type ConnectionStatusHandler = (status: 'connecting' | 'connected' | 'dis
 
 // API Keys from environment - Vite replaces these at build time
 // @ts-ignore
-const FINNHUB_API_KEY: string = (typeof globalThis !== 'undefined' && (globalThis as any).__VITE_FINNHUB_API_KEY__) || '';
+declare const __FINNHUB_API_KEY__: string;
 // @ts-ignore
-const MASSIVE_API_KEY: string = (typeof globalThis !== 'undefined' && (globalThis as any).__VITE_MASSIVE_API_KEY__) || '';
+declare const __MASSIVE_API_KEY__: string;
+const FINNHUB_API_KEY: string = (typeof __FINNHUB_API_KEY__ !== 'undefined' ? __FINNHUB_API_KEY__ : '');
+const MASSIVE_API_KEY: string = (typeof __MASSIVE_API_KEY__ !== 'undefined' ? __MASSIVE_API_KEY__ : '');
 
 // Price cache from WebSocket data
 const priceCache = new Map<string, { price: number; change: number; changePercent: number; timestamp: number }>();

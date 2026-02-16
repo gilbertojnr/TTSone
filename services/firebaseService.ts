@@ -6,8 +6,10 @@ import { HighProbSetup } from "../types";
  * PRODUCTION CONFIGURATION for Project: gen-lang-client-0278144585
  * Connected to trustthestrat-backend-service and aenigma-parvum-agent.
  */
+// @ts-ignore
+declare const __FIREBASE_API_KEY__: string;
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "demo-key", 
+  apiKey: (typeof __FIREBASE_API_KEY__ !== 'undefined' ? __FIREBASE_API_KEY__ : "demo-key"), 
   authDomain: "gen-lang-client-0278144585.firebaseapp.com",
   projectId: "gen-lang-client-0278144585",
   storageBucket: "gen-lang-client-0278144585.appspot.com",
