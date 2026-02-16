@@ -21,12 +21,20 @@ const App: React.FC = () => {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [canShowCatalysts, setCanShowCatalysts] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const FINNHUB_KEY = 'd5q8pd9r01qq2b6b62vgd5q8pd9r01qq2b6b6300';
+    const FINNHUB_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
     
     const initializeData = async () => {
-      setSyncing(true);
+      if (!FINNHUB_KEY) {
+        setError('Finnhub API key not configured. Please set VITE_FINNHUB_API_KEY in .env.local');
+        setSyncing(false);
+        return;
+      }
+      try {
+        setSyncing(true);
+        setError(null);
       await getWatchlistFromCloud();
       const updatedStocks = await Promise.all(stocks.map(async (stock) => {
         const quote = await marketStream.fetchQuote(stock.symbol, FINNHUB_KEY);
@@ -44,6 +52,10 @@ const App: React.FC = () => {
       setStocks(updatedStocks);
       setSyncing(false);
       setTimeout(() => setCanShowCatalysts(true), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initialize data');
+      setSyncing(false);
+    }
     };
 
     initializeData();
@@ -118,6 +130,11 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+          {error && (
+            <div className="max-w-[1600px] mx-auto mb-4 p-4 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+              <p className="text-rose-400 text-sm font-medium">{error}</p>
+            </div>
+          )}
           <div className="max-w-[1600px] mx-auto space-y-8 pb-20">
             {activeTab === 'scanner' && (
               <>

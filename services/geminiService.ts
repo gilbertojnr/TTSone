@@ -3,7 +3,13 @@ import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { StockSetup, StratInsight, MarketPulse, CatalystStock, HighProbSetup, AenigmaInsight } from "../types";
 
 // Initialize the Google GenAI client using the environment variable.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GEMINI_API_KEY || '';
+
+if (!apiKey) {
+  console.warn('GEMINI_API_KEY not set. AI features will not work.');
+}
+
+const ai = new GoogleGenAI({ apiKey });
 
 const STORAGE_KEY_PREFIX = 'tts_cache_';
 const CACHE_DURATIONS = {
@@ -34,6 +40,10 @@ function setStoredData(key: string, data: any) {
  * Handles macro-context, liquidity voids, and trend exhaustion.
  */
 export async function getAenigmaAnalysis(stock: StockSetup): Promise<AenigmaInsight> {
+  if (!apiKey) {
+    return { macroBias: 'Neutral', liquidityZone: 'N/A', protocolNote: 'API key not configured.', confluenceScore: 0 };
+  }
+  
   const prompt = `
     AGENT: Aenigma-Parvum Protocol Analysis
     TASK: Analyze ${stock.symbol} for Macro-Exhaustion and Liquidity Voids.
@@ -72,6 +82,10 @@ export async function getAenigmaAnalysis(stock: StockSetup): Promise<AenigmaInsi
  * Handles raw candle patterns and Universal Truths.
  */
 export async function getStratAnalysis(stock: StockSetup): Promise<StratInsight> {
+  if (!apiKey) {
+    return { analysis: "API key not configured.", potentialTarget: "N/A", stopLoss: "N/A", probability: "Medium" };
+  }
+  
   const prompt = `
     ENGINE: TTS (The Strat)
     Analyze ${stock.symbol} using 1-2-3 Candle Patterns.
@@ -106,6 +120,11 @@ export async function getStratAnalysis(stock: StockSetup): Promise<StratInsight>
  * Enhanced to consider FTFC confluence.
  */
 export async function getCatalystInsights(stocks: StockSetup[]): Promise<CatalystStock[]> {
+  if (!apiKey) {
+    console.warn('Cannot fetch catalysts: API key not configured');
+    return [];
+  }
+  
   const cacheKey = 'catalyst_insights';
   const cached = getStoredData<CatalystStock[]>(cacheKey, CACHE_DURATIONS.catalyst);
   if (cached) return cached;
@@ -158,6 +177,11 @@ export async function getCatalystInsights(stocks: StockSetup[]): Promise<Catalys
 }
 
 export async function getHighProbabilitySetups(stocks: StockSetup[]): Promise<HighProbSetup[]> {
+  if (!apiKey) {
+    console.warn('Cannot fetch setups: API key not configured');
+    return [];
+  }
+  
   const cacheKey = 'high_prob_setups';
   const cached = getStoredData<HighProbSetup[]>(cacheKey, CACHE_DURATIONS.highProb);
   if (cached) return cached;
@@ -204,6 +228,10 @@ export async function getHighProbabilitySetups(stocks: StockSetup[]): Promise<Hi
 }
 
 export async function getMarketPulse(stocks: StockSetup[]): Promise<MarketPulse & { sources?: any[] }> {
+  if (!apiKey) {
+    return { summary: "API key not configured. Please set GEMINI_API_KEY.", topPick: "N/A", marketBias: "Neutral" };
+  }
+  
   const spy = stocks.find(s => s.symbol === 'SPY');
   const qqq = stocks.find(s => s.symbol === 'QQQ');
   const indexContext = `SPY FTFC: ${spy?.ftfc || 'Mixed'}, QQQ FTFC: ${qqq?.ftfc || 'Mixed'}.`;
@@ -229,7 +257,12 @@ export async function getMarketPulse(stocks: StockSetup[]): Promise<MarketPulse 
   }
 }
 
-export function createStratMentorChat(): Chat {
+export function createStratMentorChat(): Chat | null {
+  if (!apiKey) {
+    console.warn('Cannot create chat: API key not configured');
+    return null;
+  }
+  
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
     config: {
