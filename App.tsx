@@ -24,20 +24,26 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const FINNHUB_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
-    
     const initializeData = async () => {
-      if (!FINNHUB_KEY) {
-        setError('Finnhub API key not configured. Please set VITE_FINNHUB_API_KEY in .env.local');
+      const hasMassiveKey = !!import.meta.env.VITE_MASSIVE_API_KEY;
+      const hasFinnhubKey = !!import.meta.env.VITE_FINNHUB_API_KEY;
+      
+      if (!hasMassiveKey && !hasFinnhubKey) {
+        setError('No API keys configured. Please set VITE_MASSIVE_API_KEY or VITE_FINNHUB_API_KEY in .env.local');
         setSyncing(false);
         return;
       }
+      
       try {
         setSyncing(true);
         setError(null);
       await getWatchlistFromCloud();
       const updatedStocks = await Promise.all(stocks.map(async (stock) => {
-        const quote = await marketStream.fetchQuote(stock.symbol, FINNHUB_KEY);
+        // Try MASSIVE first, then Finnhub
+        let quote = await marketStream.fetchQuoteFromMassive(stock.symbol);
+        if (!quote && hasFinnhubKey) {
+          quote = await marketStream.fetchQuote(stock.symbol);
+        }
         if (quote && quote.c) {
           return {
             ...stock,
@@ -60,7 +66,7 @@ const App: React.FC = () => {
 
     initializeData();
     marketStream.onStatusChange((status) => setConnStatus(status));
-    marketStream.connectToLiveProvider(FINNHUB_KEY);
+    marketStream.connectToLiveProvider('massive');
   }, []);
 
   const handleMarketUpdate = useCallback((symbol: string, price: number, tick: number) => {
