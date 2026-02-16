@@ -20,8 +20,7 @@ export default defineConfig(({ mode }) => {
             // Also ensure script has proper MIME type handling
             return html
               .replace(/type="module"/g, '')
-              .replace(/crossorigin/g, '')
-              .replace(/<script /g, '<script type="text/javascript" ');
+              .replace(/crossorigin/g, '');
           }
         }
       ],
@@ -43,6 +42,19 @@ export default defineConfig(({ mode }) => {
         rollupOptions: {
           input: {
             main: path.resolve(__dirname, 'index.html'),
+          },
+          output: {
+            // Use a simpler filename without hash to avoid MIME type issues
+            entryFileNames: 'assets/app.js',
+            chunkFileNames: 'assets/[name].js',
+            assetFileNames: (assetInfo) => {
+              const info = assetInfo.name.split('.');
+              const ext = info[info.length - 1];
+              if (ext === 'js') {
+                return 'assets/[name][extname]';
+              }
+              return 'assets/[name]-[hash][extname]';
+            },
           },
         },
       }
