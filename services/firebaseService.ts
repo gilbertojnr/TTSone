@@ -7,7 +7,7 @@ import { HighProbSetup } from "../types";
  * Connected to trustthestrat-backend-service and aenigma-parvum-agent.
  */
 const firebaseConfig = {
-  apiKey: "env_injected_key", 
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "demo-key", 
   authDomain: "gen-lang-client-0278144585.firebaseapp.com",
   projectId: "gen-lang-client-0278144585",
   storageBucket: "gen-lang-client-0278144585.appspot.com",
@@ -16,11 +16,18 @@ const firebaseConfig = {
 };
 
 let db: Firestore | null = null;
+let firebaseInitialized = false;
 
 try {
-  const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app);
-  console.log("TTS Cloud Infrastructure: Connected to gen-lang-client-0278144585");
+  // Only initialize if we have a valid API key
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "demo-key") {
+    const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    db = getFirestore(app);
+    firebaseInitialized = true;
+    console.log("TTS Cloud Infrastructure: Connected to gen-lang-client-0278144585");
+  } else {
+    console.log("TTS Cloud: Firebase not configured (demo mode)");
+  }
 } catch (error) {
   console.error("TTS Cloud Infrastructure: Connection Failed", error);
 }
