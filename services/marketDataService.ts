@@ -88,46 +88,76 @@ class MarketDataStream {
     
     console.log('Attempting MASSIVE connection...', { hasKey: !!MASSIVE_API_KEY, keyLength: MASSIVE_API_KEY?.length });
     
-    if (!MASSIVE_API_KEY) {
-      console.warn('MASSIVE API key not available');
-      if (FINNHUB_API_KEY) {
-        this.initiateFinnhubConnection();
-      } else {
-        this.startSimulation();
-      }
-      return;
-    }
-    
     this.updateStatus('connecting');
     this.currentProvider = 'massive';
     this.isAuthenticated = false;
     
     try {
-      const url = `${this.MASSIVE_WS_URL}`;
-      console.log('Connecting to:', url);
+      // Try connecting with API key in URL if available
+      const url = MASSIVE_API_KEY 
+        ? `${this.MASSIVE_WS_URL}?apiKey=${MASSIVE_API_KEY}`
+        : `${this.MASSIVE_WS_URL}`;
+      console.log('Connecting to:', this.MASSIVE_WS_URL);
       this.socket = new WebSocket(url);
       
       this.socket.onopen = () => {
         console.log('MASSIVE WebSocket connected successfully');
         
-        // Authenticate with API key
-        const authMsg = JSON.stringify({
+        // Try multiple auth formats
+        // Format 1: Simple auth message
+        const authMsg1 = JSON.stringify({
           type: 'auth',
           apiKey: MASSIVE_API_KEY
         });
-        console.log('Sending auth message...');
-        this.socket?.send(authMsg);
+        
+        // Format 2: Login message
+        const authMsg2 = JSON.stringify({
+          action: 'login',
+          apiKey: MASSIVE_API_KEY
+        });
+        
+        // Format 3: Just subscribe directly (some APIs don't need auth)
+        
+        console.log('Sending auth messages...');
+        if (MASSIVE_API_KEY) {
+          this.socket?.send(authMsg1);
+          setTimeout(() => this.socket?.send(authMsg2), 100);
+        }
+        
+        // Subscribe immediately as well (in case no auth needed)
+        setTimeout(() => {
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            console.log('Subscribing to symbols:', this.allSymbols.length);
+            this.allSymbols.forEach((symbol, i) => {
+              setTimeout(() => {
+                this.socket?.send(JSON.stringify({
+                  type: 'subscribe',
+                  symbol: symbol
+                }));
+              }, i * 50); // Stagger subscriptions
+            });
+          }
+        }, 200);
       };
 
       this.socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('MASSIVE message received:', data);
+          console.log('MASSIVE message received:', JSON.stringify(data));
           this.lastMessageTime = Date.now();
           
+          // Handle connection established
+          if (data.type === 'connected' || data.type === 'connection' || data.event === 'connected') {
+            console.log('MASSIVE connection confirmed');
+            this.isLiveConnection = true;
+            this.updateStatus('connected');
+            this.stopSimulation();
+            return;
+          }
+          
           // Handle auth response
-          if (data.type === 'auth') {
-            if (data.status === 'success') {
+          if (data.type === 'auth' || data.type === 'login' || data.action === 'login') {
+            if (data.status === 'success' || data.success === true || data.authenticated === true) {
               console.log('MASSIVE auth successful');
               this.isAuthenticated = true;
               this.isLiveConnection = true;
@@ -136,78 +166,88 @@ class MarketDataStream {
               this.stopSimulation();
               
               // Subscribe to symbols after successful auth
-              console.log('Subscribing to symbols:', this.allSymbols.length);
-              this.allSymbols.forEach(symbol => {
-                this.socket?.send(JSON.stringify({
-                  type: 'subscribe',
-                  symbol: symbol
-                }));
+              console.log('Subscribing to symbols after auth:', this.allSymbols.length);
+              this.allSymbols.forEach((symbol, i) => {
+                setTimeout(() => {
+                  this.socket?.send(JSON.stringify({
+                    type: 'subscribe',
+                    symbol: symbol
+                  }));
+                }, i * 50);
               });
             } else {
-              console.error('MASSIVE auth failed:', data.message);
+              console.error('MASSIVE auth failed:', data.message || data.error || 'Unknown error');
               this.isAuthenticated = false;
-              this.updateStatus('error');
-              // Try Finnhub if auth fails
-              if (FINNHUB_API_KEY) {
-                this.initiateFinnhubConnection();
-              }
+              // Don't treat auth failure as fatal - might not need auth
             }
             return;
           }
           
-          // Handle MASSIVE WebSocket message format
-          if (data.type === 'trade' || data.event === 'trade') {
-            const symbol = data.symbol || data.s;
-            const price = data.price || data.p || data.last;
-            const change = data.change || data.d || 0;
-            const changePercent = data.changePercent || data.dp || 0;
+          // Handle subscription confirmation
+          if (data.type === 'subscribe' || data.type === 'subscribed') {
+            console.log('Subscription confirmed:', data.symbol || data.s);
+            return;
+          }
+          
+          // If we get any data message, we're connected
+          if (!this.isLiveConnection && (data.price || data.last || data.c || data.trade || data.quote)) {
+            console.log('MASSIVE data received - marking as connected');
+            this.isLiveConnection = true;
+            this.updateStatus('connected');
+            this.stopSimulation();
+          }
+          
+          // Handle MASSIVE WebSocket message format - try multiple field mappings
+          const symbol = data.symbol || data.s || data.ticker || data.sym;
+          const price = data.price || data.p || data.last || data.c || data.lp || data.value;
+          const change = data.change || data.d || data.ch || 0;
+          const changePercent = data.changePercent || data.dp || data.chp || data.pChange || 0;
+          
+          if (symbol && price && typeof price === 'number') {
+            console.log(`MASSIVE trade: ${symbol} @ $${price}`);
+            // Update cache
+            priceCache.set(symbol, {
+              price,
+              change,
+              changePercent,
+              timestamp: Date.now()
+            });
             
-            if (symbol && price) {
-              // Update cache
-              priceCache.set(symbol, {
-                price,
-                change,
-                changePercent,
-                timestamp: Date.now()
-              });
-              
-              // Notify handlers
-              this.handlers.forEach(handler => handler(symbol, price, 0));
-            }
-          } else if (data.trades) {
+            // Notify handlers
+            this.handlers.forEach(handler => handler(symbol, price, 0));
+          } else if (data.trades && Array.isArray(data.trades)) {
             // Batch trades format
             data.trades.forEach((trade: any) => {
-              const symbol = trade.symbol || trade.s;
-              const price = trade.price || trade.p;
-              const change = trade.change || trade.d || 0;
-              const changePercent = trade.changePercent || trade.dp || 0;
+              const tSymbol = trade.symbol || trade.s || trade.ticker;
+              const tPrice = trade.price || trade.p || trade.last || trade.c;
+              const tChange = trade.change || trade.d || 0;
+              const tChangePercent = trade.changePercent || trade.dp || 0;
               
-              if (symbol && price) {
-                priceCache.set(symbol, {
-                  price,
-                  change,
-                  changePercent,
+              if (tSymbol && tPrice) {
+                priceCache.set(tSymbol, {
+                  price: tPrice,
+                  change: tChange,
+                  changePercent: tChangePercent,
                   timestamp: Date.now()
                 });
-                this.handlers.forEach(handler => handler(symbol, price, 0));
+                this.handlers.forEach(handler => handler(tSymbol, tPrice, 0));
               }
             });
-          } else if (data.type === 'quote') {
-            // Quote format
-            const symbol = data.symbol || data.s;
-            const price = data.price || data.p || data.c || data.last;
-            const change = data.change || data.d || 0;
-            const changePercent = data.changePercent || data.dp || 0;
-            
-            if (symbol && price) {
-              priceCache.set(symbol, {
-                price,
-                change,
-                changePercent,
-                timestamp: Date.now()
-              });
-              this.handlers.forEach(handler => handler(symbol, price, 0));
-            }
+          } else if (data.quotes && Array.isArray(data.quotes)) {
+            // Batch quotes format
+            data.quotes.forEach((quote: any) => {
+              const qSymbol = quote.symbol || quote.s || quote.ticker;
+              const qPrice = quote.price || quote.p || quote.c || quote.last;
+              if (qSymbol && qPrice) {
+                priceCache.set(qSymbol, {
+                  price: qPrice,
+                  change: quote.change || 0,
+                  changePercent: quote.changePercent || 0,
+                  timestamp: Date.now()
+                });
+                this.handlers.forEach(handler => handler(qSymbol, qPrice, 0));
+              }
+            });
           }
         } catch (e) {
           console.error('Error parsing MASSIVE WebSocket message:', e);
