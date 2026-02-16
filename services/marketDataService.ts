@@ -129,29 +129,42 @@ class MarketDataStream {
           if (this.socket?.readyState === WebSocket.OPEN) {
             console.log('Subscribing to symbols:', this.allSymbols.length);
             
-            // Try different subscription formats
-            // Format 1: MASSIVE native format
-            this.allSymbols.forEach((symbol, i) => {
-              setTimeout(() => {
-                if (this.socket?.readyState === WebSocket.OPEN) {
-                  // Try MASSIVE format with "ev" field
-                  this.socket.send(JSON.stringify({
-                    ev: 'subscribe',
-                    symbol: symbol
-                  }));
-                }
-              }, i * 100);
+            // MASSIVE API format - subscribe to trades (ev: "T") and quotes (ev: "Q")
+            // Send as a single message with all symbols
+            const subscribeMsg = JSON.stringify({
+              ev: 'T',  // Trade events
+              symbols: this.allSymbols
             });
+            console.log('Sending trade subscription:', subscribeMsg);
+            this.socket.send(subscribeMsg);
             
-            // Format 2: Alternative - subscribe to all at once
+            // Also subscribe to quotes
             setTimeout(() => {
               if (this.socket?.readyState === WebSocket.OPEN) {
-                this.socket.send(JSON.stringify({
-                  action: 'subscribe',
+                const quoteMsg = JSON.stringify({
+                  ev: 'Q',  // Quote events
                   symbols: this.allSymbols
-                }));
+                });
+                console.log('Sending quote subscription:', quoteMsg);
+                this.socket.send(quoteMsg);
               }
-            }, this.allSymbols.length * 100 + 100);
+            }, 500);
+            
+            // Alternative format - try individual symbol subscriptions
+            setTimeout(() => {
+              if (this.socket?.readyState === WebSocket.OPEN) {
+                this.allSymbols.forEach((symbol, i) => {
+                  setTimeout(() => {
+                    if (this.socket?.readyState === WebSocket.OPEN) {
+                      this.socket.send(JSON.stringify({
+                        ev: 'T',
+                        symbol: symbol
+                      }));
+                    }
+                  }, i * 50);
+                });
+              }
+            }, 1000);
           }
         }, 500);
       };
@@ -198,14 +211,42 @@ class MarketDataStream {
               continue;
             }
             
-            // If we get any data message with price, we're connected
-            if (data.price || data.last || data.c || data.p || data.trade || data.quote) {
-              if (!this.isLiveConnection) {
-                console.log('MASSIVE data received - marking as connected');
-                this.isLiveConnection = true;
-                this.updateStatus('connected');
-                this.stopSimulation();
+            // Handle trade events (ev = "T")
+            if (data.ev === 'T' || data.event === 'trade' || data.type === 'trade') {
+              const symbol = data.sym || data.symbol || data.s || data.ticker;
+              const price = data.p || data.price || data.lp || data.last;
+              const change = data.change || 0;
+              const changePercent = data.changePercent || 0;
+              
+              if (symbol && price) {
+                console.log(`MASSIVE trade: ${symbol} @ $${price}`);
+                priceCache.set(symbol, {
+                  price: Number(price),
+                  change: Number(change),
+                  changePercent: Number(changePercent),
+                  timestamp: Date.now()
+                });
+                this.handlers.forEach(handler => handler(symbol, Number(price), 0));
               }
+              continue;
+            }
+            
+            // Handle quote events (ev = "Q")
+            if (data.ev === 'Q' || data.event === 'quote' || data.type === 'quote') {
+              const symbol = data.sym || data.symbol || data.s;
+              const price = data.p || data.price || data.ap || data.bp; // ask price or bid price
+              
+              if (symbol && price) {
+                console.log(`MASSIVE quote: ${symbol} @ $${price}`);
+                priceCache.set(symbol, {
+                  price: Number(price),
+                  change: 0,
+                  changePercent: 0,
+                  timestamp: Date.now()
+                });
+                this.handlers.forEach(handler => handler(symbol, Number(price), 0));
+              }
+              continue;
             }
             
             // Handle MASSIVE WebSocket message format - try multiple field mappings
