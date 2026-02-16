@@ -24,7 +24,8 @@ class MarketDataStream {
   
   // Provider endpoints
   private FINNHUB_WS_URL = "wss://ws.finnhub.io";
-  private MASSIVE_WS_URL = "wss://api.massive.com/v1/ws"; // Update with actual MASSIVE endpoint
+  // MASSIVE WebSocket endpoint - using their stocks WebSocket API
+  private MASSIVE_WS_URL = "wss://api.massive.com/v1/ws/stocks";
 
   private allSymbols = [
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'AMD', 'SMCI', 'PLTR',
@@ -59,21 +60,31 @@ class MarketDataStream {
     }
   }
 
-  // Fetch quote from MASSIVE API
+  // Fetch quote from MASSIVE REST API
   public async fetchQuoteFromMassive(symbol: string): Promise<FinnhubQuote | null> {
     if (!MASSIVE_API_KEY) {
       console.warn('MASSIVE API key not configured');
       return null;
     }
     try {
-      // Update with actual MASSIVE API endpoint
-      const response = await fetch(`https://api.massive.com/v1/quote?symbol=${symbol}`, {
+      const response = await fetch(`https://api.massive.com/v1/stocks/quote?symbol=${symbol}`, {
         headers: {
           'Authorization': `Bearer ${MASSIVE_API_KEY}`,
           'Content-Type': 'application/json'
         }
       });
-      return await response.json();
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      // Map MASSIVE format to Finnhub format
+      return {
+        c: data.price || data.last || 0,
+        d: data.change || 0,
+        dp: data.changePercent || 0,
+        h: data.high || 0,
+        l: data.low || 0,
+        o: data.open || 0,
+        pc: data.previousClose || 0
+      };
     } catch (e) { 
       console.error('Error fetching from MASSIVE:', e);
       return null; 
@@ -89,53 +100,145 @@ class MarketDataStream {
     }, 10000);
   }
 
-  public connectToLiveProvider(preferredProvider: 'finnhub' | 'massive' = 'finnhub') {
+  public connectToLiveProvider(preferredProvider: 'massive' | 'finnhub' = 'massive') {
     this.reconnectAttempts = 0;
     this.currentProvider = preferredProvider;
     
-    // Only WebSocket with Finnhub (MASSIVE may not support WebSocket)
-    if (FINNHUB_API_KEY) {
-      this.initiateConnection('finnhub');
+    // Try MASSIVE first if key available, otherwise Finnhub
+    if (preferredProvider === 'massive' && MASSIVE_API_KEY) {
+      this.initiateMassiveConnection();
+    } else if (FINNHUB_API_KEY) {
+      this.initiateFinnhubConnection();
+    } else if (MASSIVE_API_KEY) {
+      this.initiateMassiveConnection();
     } else {
-      console.warn('No Finnhub API key, starting simulation');
+      console.warn('No API keys configured, starting simulation');
       this.startSimulation();
     }
   }
 
-  private initiateConnection(provider: 'massive' | 'finnhub') {
+  // MASSIVE WebSocket Connection
+  private initiateMassiveConnection() {
     if (this.socket) { 
       try { this.socket.close(); } catch(e) {} 
     }
     
+    if (!MASSIVE_API_KEY) {
+      console.warn('MASSIVE API key not available');
+      if (FINNHUB_API_KEY) {
+        this.initiateFinnhubConnection();
+      } else {
+        this.startSimulation();
+      }
+      return;
+    }
+    
     this.updateStatus('connecting');
+    this.currentProvider = 'massive';
     
-    // Determine which provider to use - MASSIVE first, then Finnhub
-    let url: string;
-    let apiKey: string;
+    try {
+      // MASSIVE WebSocket with authentication
+      const url = `${this.MASSIVE_WS_URL}?apikey=${MASSIVE_API_KEY}`;
+      this.socket = new WebSocket(url);
+      
+      this.socket.onopen = () => {
+        console.log('MASSIVE WebSocket connected');
+        this.isLiveConnection = true;
+        this.reconnectAttempts = 0;
+        this.lastMessageTime = Date.now();
+        this.updateStatus('connected');
+        this.stopSimulation();
+        
+        // Subscribe to symbols - MASSIVE format
+        this.allSymbols.forEach(symbol => {
+          this.socket?.send(JSON.stringify({
+            action: 'subscribe',
+            symbol: symbol
+          }));
+        });
+      };
+
+      this.socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.lastMessageTime = Date.now();
+          
+          // Handle MASSIVE WebSocket message format
+          if (data.type === 'trade' || data.event === 'trade') {
+            const symbol = data.symbol || data.s;
+            const price = data.price || data.p || data.last;
+            if (symbol && price) {
+              this.handlers.forEach(handler => handler(symbol, price, 0));
+            }
+          } else if (data.trades) {
+            // Batch trades format
+            data.trades.forEach((trade: any) => {
+              const symbol = trade.symbol || trade.s;
+              const price = trade.price || trade.p;
+              if (symbol && price) {
+                this.handlers.forEach(handler => handler(symbol, price, 0));
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Error parsing MASSIVE WebSocket message:', e);
+        }
+      };
+
+      this.socket.onerror = (error) => {
+        console.error('MASSIVE WebSocket error:', error);
+        this.isLiveConnection = false;
+        this.updateStatus('error');
+        // Fall back to Finnhub on error
+        if (FINNHUB_API_KEY) {
+          console.log('MASSIVE error, falling back to Finnhub');
+          this.initiateFinnhubConnection();
+        } else {
+          this.reconnect();
+        }
+      };
+
+      this.socket.onclose = () => {
+        console.log('MASSIVE WebSocket closed');
+        this.isLiveConnection = false;
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.reconnect();
+        } else {
+          this.updateStatus('disconnected');
+          this.startSimulation();
+        }
+      };
+    } catch (e) {
+      console.error('Error creating MASSIVE WebSocket:', e);
+      if (FINNHUB_API_KEY) {
+        this.initiateFinnhubConnection();
+      } else {
+        this.reconnect();
+      }
+    }
+  }
+
+  // Finnhub WebSocket Connection
+  private initiateFinnhubConnection() {
+    if (this.socket) { 
+      try { this.socket.close(); } catch(e) {} 
+    }
     
-    if (provider === 'massive' && MASSIVE_API_KEY) {
-      url = `${this.MASSIVE_WS_URL}?token=${MASSIVE_API_KEY}`;
-      apiKey = MASSIVE_API_KEY;
-      this.currentProvider = 'massive';
-    } else if (FINNHUB_API_KEY) {
-      url = `${this.FINNHUB_WS_URL}?token=${FINNHUB_API_KEY}`;
-      apiKey = FINNHUB_API_KEY;
-      this.currentProvider = 'finnhub';
-    } else if (MASSIVE_API_KEY) {
-      // Fallback to MASSIVE if Finnhub not available
-      url = `${this.MASSIVE_WS_URL}?token=${MASSIVE_API_KEY}`;
-      apiKey = MASSIVE_API_KEY;
-      this.currentProvider = 'massive';
-    } else {
-      console.warn('No API keys configured, starting simulation');
+    if (!FINNHUB_API_KEY) {
+      console.warn('Finnhub API key not available');
       this.startSimulation();
       return;
     }
     
+    this.updateStatus('connecting');
+    this.currentProvider = 'finnhub';
+    
     try {
+      const url = `${this.FINNHUB_WS_URL}?token=${FINNHUB_API_KEY}`;
       this.socket = new WebSocket(url);
       
       this.socket.onopen = () => {
+        console.log('Finnhub WebSocket connected');
         this.isLiveConnection = true;
         this.reconnectAttempts = 0;
         this.lastMessageTime = Date.now();
@@ -158,18 +261,19 @@ class MarketDataStream {
             });
           }
         } catch (e) {
-          console.error('Error parsing WebSocket message:', e);
+          console.error('Error parsing Finnhub WebSocket message:', e);
         }
       };
 
       this.socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('Finnhub WebSocket error:', error);
         this.isLiveConnection = false;
         this.updateStatus('error');
         this.reconnect();
       };
 
       this.socket.onclose = () => {
+        console.log('Finnhub WebSocket closed');
         this.isLiveConnection = false;
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnect();
@@ -179,7 +283,7 @@ class MarketDataStream {
         }
       };
     } catch (e) {
-      console.error('Error creating WebSocket:', e);
+      console.error('Error creating Finnhub WebSocket:', e);
       this.reconnect();
     }
   }
@@ -188,16 +292,17 @@ class MarketDataStream {
     this.reconnectAttempts++;
     setTimeout(() => {
       if (!this.isLiveConnection) {
-        // Try fallback provider if primary fails
-        // Priority: MASSIVE → Finnhub → Simulation
+        // Try fallback provider
         if (this.currentProvider === 'massive' && FINNHUB_API_KEY) {
-          console.log('MASSIVE failed, falling back to Finnhub');
-          this.initiateConnection('finnhub');
+          console.log('Retrying with Finnhub...');
+          this.initiateFinnhubConnection();
         } else if (this.currentProvider === 'finnhub' && MASSIVE_API_KEY) {
-          console.log('Finnhub failed, trying MASSIVE');
-          this.initiateConnection('massive');
+          console.log('Retrying with MASSIVE...');
+          this.initiateMassiveConnection();
+        } else if (this.currentProvider === 'massive') {
+          this.initiateMassiveConnection();
         } else {
-          this.initiateConnection(this.currentProvider);
+          this.initiateFinnhubConnection();
         }
       }
     }, 2000);

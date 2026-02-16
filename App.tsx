@@ -66,7 +66,7 @@ const App: React.FC = () => {
 
     initializeData();
     marketStream.onStatusChange((status) => setConnStatus(status));
-    marketStream.connectToLiveProvider('finnhub');
+    marketStream.connectToLiveProvider('massive');
   }, []);
 
   const handleMarketUpdate = useCallback((symbol: string, price: number, tick: number) => {
