@@ -24,8 +24,8 @@ class MarketDataStream {
   
   // Provider endpoints
   private FINNHUB_WS_URL = "wss://ws.finnhub.io";
-  // MASSIVE WebSocket endpoint - using their stocks WebSocket API
-  private MASSIVE_WS_URL = "wss://api.massive.com/v1/ws/stocks";
+  // MASSIVE WebSocket endpoint - actual URL from wscat test
+  private MASSIVE_WS_URL = "wss://socket.massive.com/stocks";
 
   private allSymbols = [
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'AMD', 'SMCI', 'PLTR',
@@ -138,21 +138,30 @@ class MarketDataStream {
     
     try {
       // MASSIVE WebSocket with authentication
-      const url = `${this.MASSIVE_WS_URL}?apikey=${MASSIVE_API_KEY}`;
+      // MASSIVE uses different auth - check if API key is passed as query param or header
+      const url = `${this.MASSIVE_WS_URL}`;
       this.socket = new WebSocket(url);
       
+      // Send authentication message after connection
       this.socket.onopen = () => {
         console.log('MASSIVE WebSocket connected');
+        
+        // Authenticate with API key
+        this.socket?.send(JSON.stringify({
+          type: 'auth',
+          apiKey: MASSIVE_API_KEY
+        }));
+        
         this.isLiveConnection = true;
         this.reconnectAttempts = 0;
         this.lastMessageTime = Date.now();
         this.updateStatus('connected');
         this.stopSimulation();
         
-        // Subscribe to symbols - MASSIVE format
+        // Subscribe to symbols after auth
         this.allSymbols.forEach(symbol => {
           this.socket?.send(JSON.stringify({
-            action: 'subscribe',
+            type: 'subscribe',
             symbol: symbol
           }));
         });
