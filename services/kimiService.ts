@@ -11,7 +11,7 @@ const getKimiApiKey = (): string => {
 };
 
 // Verify API key is loaded (for debugging)
-console.log('Kimi API Key loaded:', !!getKimiApiKey());
+console.log('Kimi API Key loaded:', !!getKimiApiKey(), '- Ready for production');
 
 // Use regular Kimi API endpoint (not coding)
 const KIMI_BASE_URL = 'https://api.moonshot.cn/v1';
