@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { StockSetup, MarketPulse } from '../types';
-import { getMarketPulse } from '../services/geminiService';
+import { getMarketPulse } from '../services/kimiService';
 import { Sparkles, ArrowRight, TrendingUp, TrendingDown, Minus, ExternalLink, Globe, RefreshCcw, Quote } from 'lucide-react';
 
 interface Props {

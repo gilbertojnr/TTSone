@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { StockSetup, StratInsight, AenigmaInsight } from '../types';
-import { getStratAnalysis, getAenigmaAnalysis } from '../services/geminiService';
+import { getStratAnalysis, getAenigmaAnalysis } from '../services/kimiService';
 import { BrainCircuit, Loader2, Zap, AlertTriangle, ShieldCheck, Target, Hexagon, Fingerprint, Activity } from 'lucide-react';
 
 interface Props {

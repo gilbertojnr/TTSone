@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { createStratMentorChat } from '../services/geminiService';
+import { sendChatMessage, clearChatHistory } from '../services/kimiService';
 import { MessageSquare, Send, X, Bot, User, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { ChatMessage } from '../types';
 
@@ -12,14 +12,20 @@ const StratChat: React.FC = () => {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const chatRef = useRef<any>(null);
+  const chatRef = useRef<{ sendMessage: (msg: string) => Promise<string>; clear: () => void } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen && !chatRef.current) {
-      chatRef.current = createStratMentorChat();
+      chatRef.current = { sendMessage: sendChatMessage, clear: clearChatHistory };
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      clearChatHistory();
+    };
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -36,10 +42,10 @@ const StratChat: React.FC = () => {
     setLoading(true);
 
     try {
-      const result = await chatRef.current.sendMessage({ message: userMsg });
-      setMessages(prev => [...prev, { role: 'model', text: result.text || "I couldn't process that. Focus on the 1-2-3 logic." }]);
+      const result = await chatRef.current.sendMessage(userMsg);
+      setMessages(prev => [...prev, { role: 'model', text: result }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'model', text: "Connectivity lost. Check your FTFC." }]);
+      setMessages(prev => [...prev, { role: 'model', text: "Connectivity lost. Check your FTFC or API key." }]);
     } finally {
       setLoading(false);
     }
@@ -128,7 +134,7 @@ const StratChat: React.FC = () => {
                 <Send className="w-4 h-4" />
               </button>
             </form>
-            <p className="text-[10px] text-slate-600 text-center mt-3 font-medium">Powered by Gemini AI Intelligence</p>
+            <p className="text-[10px] text-slate-600 text-center mt-3 font-medium">Powered by Kimi AI Intelligence</p>
           </div>
         </>
       )}

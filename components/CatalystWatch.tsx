@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CatalystStock, StockSetup } from '../types';
-import { getCatalystInsights } from '../services/geminiService';
+import { getCatalystInsights } from '../services/kimiService';
 import { Flame, Calendar, Info, Zap, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface Props {

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { StockSetup, HighProbSetup } from '../types';
-import { getHighProbabilitySetups } from '../services/geminiService';
+import { getHighProbabilitySetups } from '../services/kimiService';
 import { saveSignalToCloud, streamSignals } from '../services/firebaseService';
 import { ShieldCheck, TrendingUp, TrendingDown, Target, Zap, AlertTriangle, RefreshCw, Cloud, Fingerprint, Activity } from 'lucide-react';
 
