@@ -1,17 +1,8 @@
 import { StockSetup, StratInsight, MarketPulse, CatalystStock, HighProbSetup, AenigmaInsight, ChatMessage } from "../types";
 
-// Kimi API Configuration - Access at runtime to prevent tree-shaking
-const getKimiApiKey = (): string => {
-  try {
-    // @ts-ignore
-    return (typeof import.meta !== 'undefined' && import.meta.env?.VITE_KIMI_API_KEY) || '';
-  } catch {
-    return '';
-  }
-};
-
-// Verify API key is loaded (for debugging)
-console.log('Kimi API Key loaded:', !!getKimiApiKey(), '- Ready for production');
+// Kimi API Configuration - Vite replaces this at build time
+// @ts-ignore
+const KIMI_API_KEY: string = (typeof globalThis !== 'undefined' && (globalThis as any).__VITE_KIMI_API_KEY__) || '';
 
 // Use regular Kimi API endpoint (not coding)
 const KIMI_BASE_URL = 'https://api.moonshot.cn/v1';
@@ -49,8 +40,7 @@ interface KimiResponse {
 }
 
 async function callKimi(prompt: string, systemInstruction?: string): Promise<string> {
-  const apiKey = getKimiApiKey();
-  if (!apiKey) {
+  if (!KIMI_API_KEY) {
     throw new Error('KIMI_API_KEY not configured');
   }
 
@@ -64,7 +54,7 @@ async function callKimi(prompt: string, systemInstruction?: string): Promise<str
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': `Bearer ${KIMI_API_KEY}`,
     },
     body: JSON.stringify({
       model: 'kimi-latest',
@@ -97,7 +87,7 @@ async function callKimi(prompt: string, systemInstruction?: string): Promise<str
  * Handles macro-context, liquidity voids, and trend exhaustion.
  */
 export async function getAenigmaAnalysis(stock: StockSetup): Promise<AenigmaInsight> {
-  if (!getKimiApiKey()) {
+  if (!KIMI_API_KEY) {
     return { macroBias: 'Neutral', liquidityZone: 'N/A', protocolNote: 'API key not configured.', confluenceScore: 0 };
   }
   
@@ -137,7 +127,7 @@ Return ONLY this JSON format:
  * Handles raw candle patterns and Universal Truths.
  */
 export async function getStratAnalysis(stock: StockSetup): Promise<StratInsight> {
-  if (!getKimiApiKey()) {
+  if (!KIMI_API_KEY) {
     return { analysis: "API key not configured.", potentialTarget: "N/A", stopLoss: "N/A", probability: "Medium" };
   }
   
@@ -180,7 +170,7 @@ Return ONLY this JSON:
  * Scours for upcoming market-moving events.
  */
 export async function getCatalystInsights(stocks: StockSetup[]): Promise<CatalystStock[]> {
-  if (!getKimiApiKey()) {
+  if (!KIMI_API_KEY) {
     console.warn('Cannot fetch catalysts: API key not configured');
     return [];
   }
@@ -235,7 +225,7 @@ Return ONLY JSON array:
  * High Probability Setup Scanner
  */
 export async function getHighProbabilitySetups(stocks: StockSetup[]): Promise<HighProbSetup[]> {
-  if (!getKimiApiKey()) {
+  if (!KIMI_API_KEY) {
     console.warn('Cannot fetch setups: API key not configured');
     return [];
   }
@@ -292,7 +282,7 @@ Return JSON array:
  * Market Pulse - Broad market summary
  */
 export async function getMarketPulse(stocks: StockSetup[]): Promise<MarketPulse & { sources?: any[] }> {
-  if (!getKimiApiKey()) {
+  if (!KIMI_API_KEY) {
     return { summary: "API key not configured. Please set VITE_KIMI_API_KEY.", topPick: "N/A", marketBias: "Neutral" };
   }
   
@@ -336,7 +326,7 @@ Return JSON:
 let chatHistory: ChatMessage[] = [];
 
 export async function sendChatMessage(message: string): Promise<string> {
-  if (!getKimiApiKey()) {
+  if (!KIMI_API_KEY) {
     return 'API key not configured. Please set VITE_KIMI_API_KEY in GitHub Secrets';
   }
 

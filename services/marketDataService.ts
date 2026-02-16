@@ -3,9 +3,11 @@ import { StockSetup, CandleType } from "../types";
 export type MarketUpdateHandler = (symbol: string, price: number, tick: number) => void;
 export type ConnectionStatusHandler = (status: 'connecting' | 'connected' | 'disconnected' | 'error' | 'silent' | 'reconnecting' | 'cloud_active') => void;
 
-// API Keys from environment
-const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
-const MASSIVE_API_KEY = import.meta.env.VITE_MASSIVE_API_KEY || '';
+// API Keys from environment - Vite replaces these at build time
+// @ts-ignore
+const FINNHUB_API_KEY: string = (typeof globalThis !== 'undefined' && (globalThis as any).__VITE_FINNHUB_API_KEY__) || '';
+// @ts-ignore
+const MASSIVE_API_KEY: string = (typeof globalThis !== 'undefined' && (globalThis as any).__VITE_MASSIVE_API_KEY__) || '';
 
 // Price cache from WebSocket data
 const priceCache = new Map<string, { price: number; change: number; changePercent: number; timestamp: number }>();
