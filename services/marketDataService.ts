@@ -128,76 +128,87 @@ class MarketDataStream {
         setTimeout(() => {
           if (this.socket?.readyState === WebSocket.OPEN) {
             console.log('Subscribing to symbols:', this.allSymbols.length);
+            
+            // Try different subscription formats
+            // Format 1: MASSIVE native format
             this.allSymbols.forEach((symbol, i) => {
               setTimeout(() => {
-                this.socket?.send(JSON.stringify({
-                  type: 'subscribe',
-                  symbol: symbol
-                }));
-              }, i * 50); // Stagger subscriptions
+                if (this.socket?.readyState === WebSocket.OPEN) {
+                  // Try MASSIVE format with "ev" field
+                  this.socket.send(JSON.stringify({
+                    ev: 'subscribe',
+                    symbol: symbol
+                  }));
+                }
+              }, i * 100);
             });
+            
+            // Format 2: Alternative - subscribe to all at once
+            setTimeout(() => {
+              if (this.socket?.readyState === WebSocket.OPEN) {
+                this.socket.send(JSON.stringify({
+                  action: 'subscribe',
+                  symbols: this.allSymbols
+                }));
+              }
+            }, this.allSymbols.length * 100 + 100);
           }
-        }, 200);
+        }, 500);
       };
 
       this.socket.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          console.log('MASSIVE message received:', JSON.stringify(data));
-          this.lastMessageTime = Date.now();
+          // MASSIVE sends array of messages sometimes
+          const messages = JSON.parse(event.data);
+          const dataArray = Array.isArray(messages) ? messages : [messages];
           
-          // Handle connection established
-          if (data.type === 'connected' || data.type === 'connection' || data.event === 'connected') {
-            console.log('MASSIVE connection confirmed');
-            this.isLiveConnection = true;
-            this.updateStatus('connected');
-            this.stopSimulation();
-            return;
-          }
-          
-          // Handle auth response
-          if (data.type === 'auth' || data.type === 'login' || data.action === 'login') {
-            if (data.status === 'success' || data.success === true || data.authenticated === true) {
-              console.log('MASSIVE auth successful');
-              this.isAuthenticated = true;
-              this.isLiveConnection = true;
-              this.reconnectAttempts = 0;
-              this.updateStatus('connected');
-              this.stopSimulation();
-              
-              // Subscribe to symbols after successful auth
-              console.log('Subscribing to symbols after auth:', this.allSymbols.length);
-              this.allSymbols.forEach((symbol, i) => {
-                setTimeout(() => {
-                  this.socket?.send(JSON.stringify({
-                    type: 'subscribe',
-                    symbol: symbol
-                  }));
-                }, i * 50);
-              });
-            } else {
-              console.error('MASSIVE auth failed:', data.message || data.error || 'Unknown error');
-              this.isAuthenticated = false;
-              // Don't treat auth failure as fatal - might not need auth
+          for (const data of dataArray) {
+            console.log('MASSIVE message:', JSON.stringify(data));
+            this.lastMessageTime = Date.now();
+            
+            // Handle status message (ev = "status")
+            if (data.ev === 'status' || data.type === 'status' || data.event === 'status') {
+              console.log('MASSIVE status:', data.message || data.status);
+              if (data.status === 'connected' || data.status === 'success') {
+                this.isLiveConnection = true;
+                this.updateStatus('connected');
+                this.stopSimulation();
+              }
+              continue;
             }
-            return;
-          }
-          
-          // Handle subscription confirmation
-          if (data.type === 'subscribe' || data.type === 'subscribed') {
-            console.log('Subscription confirmed:', data.symbol || data.s);
-            return;
-          }
-          
-          // If we get any data message, we're connected
-          if (!this.isLiveConnection && (data.price || data.last || data.c || data.trade || data.quote)) {
-            console.log('MASSIVE data received - marking as connected');
-            this.isLiveConnection = true;
-            this.updateStatus('connected');
-            this.stopSimulation();
-          }
-          
-          // Handle MASSIVE WebSocket message format - try multiple field mappings
+            
+            // Handle auth response
+            if (data.type === 'auth' || data.type === 'login' || data.action === 'login') {
+              if (data.status === 'success' || data.success === true || data.authenticated === true) {
+                console.log('MASSIVE auth successful');
+                this.isAuthenticated = true;
+                this.isLiveConnection = true;
+                this.reconnectAttempts = 0;
+                this.updateStatus('connected');
+                this.stopSimulation();
+              } else {
+                console.error('MASSIVE auth failed:', data.message || data.error || 'Unknown error');
+              }
+              continue;
+            }
+            
+            // Handle subscription confirmation
+            if (data.type === 'subscribe' || data.type === 'subscribed' || data.ev === 'subscribe') {
+              console.log('Subscription confirmed:', data.symbol || data.s);
+              continue;
+            }
+            
+            // If we get any data message with price, we're connected
+            if (data.price || data.last || data.c || data.p || data.trade || data.quote) {
+              if (!this.isLiveConnection) {
+                console.log('MASSIVE data received - marking as connected');
+                this.isLiveConnection = true;
+                this.updateStatus('connected');
+                this.stopSimulation();
+              }
+            }
+            
+            // Handle MASSIVE WebSocket message format - try multiple field mappings
           const symbol = data.symbol || data.s || data.ticker || data.sym;
           const price = data.price || data.p || data.last || data.c || data.lp || data.value;
           const change = data.change || data.d || data.ch || 0;
@@ -249,6 +260,7 @@ class MarketDataStream {
               }
             });
           }
+          } // End for loop
         } catch (e) {
           console.error('Error parsing MASSIVE WebSocket message:', e);
         }
