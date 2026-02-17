@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       server: {
-        port: 3000,
+        port: 5173,
         host: '0.0.0.0',
       },
       plugins: [
@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
           }
         }
       ],
-      base: '/TTSone/',
+      base: mode === 'production' ? '/TTSone/' : '/',
       // Replace env vars with actual values at build time
       define: {
         '__KIMI_API_KEY__': JSON.stringify(env.VITE_KIMI_API_KEY || ''),
