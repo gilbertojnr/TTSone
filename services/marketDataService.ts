@@ -8,8 +8,11 @@ export type ConnectionStatusHandler = (status: 'connecting' | 'connected' | 'dis
 declare const __FINNHUB_API_KEY__: string;
 // @ts-ignore
 declare const __MASSIVE_API_KEY__: string;
+// @ts-ignore
+declare const __KIMI_API_KEY__: string;
 const FINNHUB_API_KEY: string = (typeof __FINNHUB_API_KEY__ !== 'undefined' ? __FINNHUB_API_KEY__ : '');
 const MASSIVE_API_KEY: string = (typeof __MASSIVE_API_KEY__ !== 'undefined' ? __MASSIVE_API_KEY__ : '');
+const KIMI_API_KEY: string = (typeof __KIMI_API_KEY__ !== 'undefined' ? __KIMI_API_KEY__ : '');
 
 // Price cache from WebSocket data
 const priceCache = new Map<string, { price: number; change: number; changePercent: number; timestamp: number }>();
@@ -67,9 +70,16 @@ class MarketDataStream {
     }, 10000);
   }
 
-  public connectToLiveProvider(preferredProvider: 'massive' | 'finnhub' = 'massive') {
+  public connectToLiveProvider(preferredProvider: 'massive' | 'finnhub' | 'rest' = 'rest') {
     this.reconnectAttempts = 0;
     this.currentProvider = preferredProvider;
+    
+    // Try REST API first (Yahoo Finance - no API key needed)
+    if (preferredProvider === 'rest' || preferredProvider === 'massive') {
+      console.log('Using REST API fallback (Yahoo Finance)');
+      this.startRestApiFallback();
+      return;
+    }
     
     // Try MASSIVE first if key available, otherwise Finnhub
     if (preferredProvider === 'massive' && MASSIVE_API_KEY) {
@@ -79,8 +89,8 @@ class MarketDataStream {
     } else if (MASSIVE_API_KEY) {
       this.initiateMassiveConnection();
     } else {
-      console.warn('No API keys configured, starting simulation');
-      this.startSimulation();
+      console.warn('No API keys configured, using REST API fallback');
+      this.startRestApiFallback();
     }
   }
 
@@ -482,6 +492,95 @@ class MarketDataStream {
 
   public getCurrentProvider(): string {
     return this.currentProvider;
+  }
+
+  // REST API Fallback using Finnhub REST API
+  public async fetchFinnhubPrices(symbols: string[]) {
+    if (!FINNHUB_API_KEY) {
+      console.warn('Finnhub API key not available for REST API');
+      return [];
+    }
+    
+    try {
+      // Finnhub free tier: 60 calls/min
+      // We'll batch requests with a small delay to stay under limit
+      const results = [];
+      
+      for (const symbol of symbols) {
+        try {
+          const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`);
+          
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn(`Rate limit hit for ${symbol}, waiting...`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              continue;
+            }
+            continue;
+          }
+          
+          const data = await response.json();
+          
+          if (data && data.c) { // c = current price
+            const price = data.c;
+            const prevClose = data.pc; // previous close
+            const change = price - prevClose;
+            const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+            
+            priceCache.set(symbol, {
+              price,
+              change,
+              changePercent,
+              timestamp: Date.now()
+            });
+            
+            this.handlers.forEach(handler => handler(symbol, price, 0));
+            
+            results.push({ symbol, price, change, changePercent });
+          }
+          
+          // Small delay to respect rate limits (60 calls/min = 1 call/sec)
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        } catch (e) {
+          console.error(`Error fetching ${symbol} from Finnhub:`, e);
+        }
+      }
+      
+      if (results.length > 0) {
+        this.updateStatus('connected');
+        console.log(`Fetched ${results.length} prices from Finnhub`);
+      }
+      
+      return results;
+    } catch (e) {
+      console.error('Error fetching Finnhub prices:', e);
+      return [];
+    }
+  }
+
+  // Start REST API polling as fallback
+  public startRestApiFallback() {
+    if (this.intervalId) return;
+    
+    console.log('Starting REST API fallback (Finnhub)');
+    this.currentProvider = 'finnhub_rest';
+    this.updateStatus('connecting');
+    
+    // Check if we have Finnhub API key
+    if (!FINNHUB_API_KEY) {
+      console.warn('No Finnhub API key, using simulation');
+      this.startSimulation();
+      return;
+    }
+    
+    // Initial fetch
+    this.fetchFinnhubPrices(this.allSymbols);
+    
+    // Poll every 60 seconds (to stay within rate limits)
+    this.intervalId = window.setInterval(() => {
+      this.fetchFinnhubPrices(this.allSymbols);
+    }, 60000);
   }
 }
 

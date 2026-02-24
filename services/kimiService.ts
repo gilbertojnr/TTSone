@@ -16,6 +16,21 @@ const CACHE_DURATIONS = {
   highProb: 1000 * 60 * 30
 };
 
+// Rate limiting: Max 3 requests per minute on free tier
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 20000; // 20 seconds between requests (3 per min)
+
+async function rateLimitCheck() {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+    console.log(`Rate limit: Waiting ${waitTime}ms before next request...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  lastRequestTime = Date.now();
+}
+
 function getStoredData<T>(key: string, duration: number): T | null {
   try {
     const item = localStorage.getItem(STORAGE_KEY_PREFIX + key);
@@ -45,42 +60,53 @@ async function callKimi(prompt: string, systemInstruction?: string): Promise<str
     throw new Error('KIMI_API_KEY not configured');
   }
 
+  // Apply rate limiting
+  await rateLimitCheck();
+
   const messages = [];
   if (systemInstruction) {
     messages.push({ role: 'system', content: systemInstruction });
   }
   messages.push({ role: 'user', content: prompt });
 
-  const response = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${KIMI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'kimi-latest',
-      messages: messages,
-      temperature: 0.7,
-      max_tokens: 2000,
-    }),
-  });
+  try {
+    const response = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${KIMI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'kimi-latest',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Kimi API error:', response.status, errorText);
-    
-    if (response.status === 401) {
-      throw new Error('Invalid API key. Please check your Kimi API key in GitHub Secrets.');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Kimi API error:', response.status, errorText);
+      
+      if (response.status === 401) {
+        throw new Error('Invalid API key. Please check your Kimi API key in GitHub Secrets.');
+      }
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded (3 req/min on free tier). Please wait a moment and try again.');
+      }
+      
+      throw new Error(`Kimi API error: ${response.status}`);
     }
-    if (response.status === 429) {
-      throw new Error('Rate limit exceeded. Please try again later.');
+
+    const data: KimiResponse = await response.json();
+    return data.choices[0]?.message?.content || '{}';
+  } catch (error: any) {
+    if (error.message?.includes('Rate limit')) {
+      throw error;
     }
-    
-    throw new Error(`Kimi API error: ${response.status}`);
+    console.error('Kimi API call failed:', error);
+    throw new Error('Failed to connect to Kimi API. Please try again later.');
   }
-
-  const data: KimiResponse = await response.json();
-  return data.choices[0]?.message?.content || '{}';
 }
 
 /**

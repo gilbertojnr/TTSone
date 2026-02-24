@@ -25,29 +25,23 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initializeData = async () => {
-      const hasMassiveKey = !!import.meta.env.VITE_MASSIVE_API_KEY;
-      const hasFinnhubKey = !!import.meta.env.VITE_FINNHUB_API_KEY;
-      
-      console.log('API Keys check:', { 
-        hasMassiveKey, 
-        hasFinnhubKey,
-        massiveKeyLength: import.meta.env.VITE_MASSIVE_API_KEY?.length || 0,
-        finnhubKeyLength: import.meta.env.VITE_FINNHUB_API_KEY?.length || 0
-      });
-      
-      if (!hasMassiveKey && !hasFinnhubKey) {
-        setError('No API keys configured. Please set VITE_MASSIVE_API_KEY or VITE_FINNHUB_API_KEY in GitHub Secrets');
-        setSyncing(false);
-        return;
-      }
+      console.log('Initializing data with REST API fallback...');
       
       try {
         setSyncing(true);
         setError(null);
         await getWatchlistFromCloud();
         
-        // WebSocket-only: Get initial prices from cache after connection
-        // The WebSocket will populate the cache with live data
+        // Use REST API fallback for live prices (Yahoo Finance)
+        marketStream.onStatusChange((status) => {
+          console.log('Connection status:', status);
+          setConnStatus(status);
+        });
+        
+        // Start REST API fallback instead of WebSocket
+        marketStream.startRestApiFallback();
+        
+        // Get initial prices from cache after a short delay
         setTimeout(() => {
           const cachedPrices = marketStream.getAllCachedPrices();
           console.log('Cached prices:', cachedPrices);
@@ -67,7 +61,7 @@ const App: React.FC = () => {
           }
           setSyncing(false);
           setTimeout(() => setCanShowCatalysts(true), 1000);
-        }, 2000); // Wait 2s for WebSocket to populate cache
+        }, 2000); // Wait 2s for REST API to populate cache
         
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize data');
@@ -76,11 +70,6 @@ const App: React.FC = () => {
     };
 
     initializeData();
-    marketStream.onStatusChange((status) => {
-      console.log('Connection status:', status);
-      setConnStatus(status);
-    });
-    marketStream.connectToLiveProvider('massive');
   }, []);
 
   const handleMarketUpdate = useCallback((symbol: string, price: number, tick: number) => {
