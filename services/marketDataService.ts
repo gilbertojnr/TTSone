@@ -577,10 +577,10 @@ class MarketDataStream {
     // Initial fetch
     this.fetchFinnhubPrices(this.allSymbols);
     
-    // Poll every 60 seconds (to stay within rate limits)
+    // Poll every 30 seconds for fresher data (stays within 60 calls/min for 15 symbols)
     this.intervalId = window.setInterval(() => {
       this.fetchFinnhubPrices(this.allSymbols);
-    }, 60000);
+    }, 30000);
   }
 }
 

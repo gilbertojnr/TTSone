@@ -4,6 +4,12 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    
+    // Also check process.env for CI/CD builds (GitHub Actions)
+    const getEnv = (key: string) => {
+        return env[key] || process.env[key] || '';
+    };
+    
     return {
       server: {
         port: 5173,
@@ -26,11 +32,11 @@ export default defineConfig(({ mode }) => {
       base: mode === 'production' ? '/TTSone/' : '/',
       // Replace env vars with actual values at build time
       define: {
-        '__KIMI_API_KEY__': JSON.stringify(env.VITE_KIMI_API_KEY || ''),
-        '__MASSIVE_API_KEY__': JSON.stringify(env.VITE_MASSIVE_API_KEY || ''),
-        '__FINNHUB_API_KEY__': JSON.stringify(env.VITE_FINNHUB_API_KEY || ''),
-        '__FIREBASE_API_KEY__': JSON.stringify(env.VITE_FIREBASE_API_KEY || ''),
-        '__GEMINI_API_KEY__': JSON.stringify(env.VITE_GEMINI_API_KEY || ''),
+        '__KIMI_API_KEY__': JSON.stringify(getEnv('VITE_KIMI_API_KEY')),
+        '__MASSIVE_API_KEY__': JSON.stringify(getEnv('VITE_MASSIVE_API_KEY')),
+        '__FINNHUB_API_KEY__': JSON.stringify(getEnv('VITE_FINNHUB_API_KEY')),
+        '__FIREBASE_API_KEY__': JSON.stringify(getEnv('VITE_FIREBASE_API_KEY')),
+        '__GEMINI_API_KEY__': JSON.stringify(getEnv('VITE_GEMINI_API_KEY')),
       },
       resolve: {
         alias: {
